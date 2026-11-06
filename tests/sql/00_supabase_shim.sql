@@ -43,3 +43,7 @@ $$;
 -- Vault stand-in
 create schema if not exists vault;
 create table if not exists vault.decrypted_secrets (name text primary key, decrypted_secret text);
+create or replace function vault.create_secret(new_secret text, new_name text default null, new_description text default '', new_key_id uuid default null)
+returns uuid language sql as $$
+  insert into vault.decrypted_secrets (name, decrypted_secret) values (new_name, new_secret) returning gen_random_uuid()
+$$;

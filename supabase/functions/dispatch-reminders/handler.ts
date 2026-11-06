@@ -1,7 +1,7 @@
 // Delivery worker. Invoked every minute by pg_cron (pg_net) and safe to invoke
 // concurrently or repeatedly: every step is lease-based and idempotent.
 import { db } from "../_shared/db.ts";
-import { env, optionalEnv, secret } from "../_shared/env.ts";
+import { ensureVapidKeys, env, optionalEnv, secret } from "../_shared/env.ts";
 import { json, log, timingSafeEqual } from "../_shared/http.ts";
 import { sendPush, topicFor, type PushResult } from "../_shared/push.ts";
 import { signActionToken } from "../_shared/token.ts";
@@ -163,6 +163,7 @@ export async function handle(req: Request): Promise<Response> {
   const stats: Record<Outcome, number> = { sent: 0, partial: 0, failed: 0, no_channel: 0, retry: 0, superseded: 0 };
 
   try {
+    await ensureVapidKeys();
     const [{ tick }] = await sql`select public.run_scheduler_tick() as tick`;
     let leased = 0;
     while (Date.now() - started < budgetMs) {

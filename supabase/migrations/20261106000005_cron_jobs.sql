@@ -8,8 +8,8 @@
 -- enqueues reminders so they appear in the in-app Notification Center.
 -- =====================================================================
 
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
+create extension if not exists pg_cron with schema pg_catalog;
+create extension if not exists pg_net with schema extensions;
 
 -- 1. Pure-SQL tick: status refresh + reminder/digest enqueue. No network dependency.
 select cron.schedule(

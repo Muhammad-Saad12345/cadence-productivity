@@ -17,7 +17,6 @@ for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT", "CRON
 {
   const admin = connect(1);
   await admin`insert into vault.decrypted_secrets (name, decrypted_secret) values
-    ('cadence_vapid_public_key', ${vapid.publicKey}), ('cadence_vapid_private_key', ${vapid.privateKey}),
     ('cadence_vapid_subject', 'mailto:test@cadence.dev'), ('cadence_cron_secret', 'cron-secret-for-tests'),
     ('cadence_action_secret', 'action-secret-for-tests')
     on conflict (name) do update set decrypted_secret = excluded.decrypted_secret`;
@@ -101,7 +100,9 @@ Deno.test({ name: "edge functions: real push delivery + notification actions", s
     assertEquals(p.headers["urgency"], "high");
     assertEquals(p.headers["ttl"], "3600");
     assertEquals(p.headers["topic"], firstTask.id.replace(/-/g, ""));
-    await verifyVapid(p.headers["authorization"], push.origin, vapid.publicKey);
+    const [{ decrypted_secret: vapidPublic }] = await sql`select decrypted_secret from vault.decrypted_secrets where name = 'cadence_vapid_public_key'`;
+    assert(vapidPublic && vapidPublic !== vapid.publicKey, "VAPID keys generated inside the backend");
+    await verifyVapid(p.headers["authorization"], push.origin, vapidPublic);
 
     const [payload] = await decoded("a1", subA);
     assertEquals(payload.title, "Prepare sprint demo");
