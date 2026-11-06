@@ -1,0 +1,16 @@
+# Supabase CLI configuration (only the parts Cadence relies on).
+project_id = "cadence"
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+
+# Both functions authenticate requests themselves:
+#  - dispatch-reminders: Bearer CRON_SECRET (called by pg_cron/pg_net)
+#  - notification-action: signed per-notification action token (called by the service worker,
+#    which has no user session when the app tab is closed)
+[functions.dispatch-reminders]
+verify_jwt = false
+
+[functions.notification-action]
+verify_jwt = false

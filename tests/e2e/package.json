@@ -1,0 +1,11 @@
+{
+  "name": "cadence-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser end-to-end tests (headless Chrome via puppeteer-core) against the built app + local Supabase emulator",
+  "dependencies": {
+    "postgres": "3.4.7",
+    "puppeteer-core": "^24.0.0",
+    "web-push": "^3.6.7"
+  }
+}
