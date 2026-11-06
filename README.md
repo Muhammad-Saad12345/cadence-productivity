@@ -14,7 +14,7 @@ src/components/…           app shell, task editor, quick capture, command pale
 src/lib/…                  Supabase clients, React Query data layer, timezone utils, quick-add parser, push client
 src/proxy.ts               session refresh + auth gate (Next 16 "proxy", formerly middleware)
 public/sw.js               service worker: push, notification actions, offline queue, offline page
-supabase/migrations/       001 schema · 002 domain logic · 003 scheduler · 004 RLS & RPCs · 005 pg_cron jobs
+supabase/migrations/       001 schema · 002 domain logic · 003 scheduler · 004 RLS & RPCs · 005 pg_cron jobs · 006 hardening
 supabase/functions/        dispatch-reminders · notification-action · _shared
 tests/                     DB/scheduler tests, Edge Function E2E push tests, browser E2E tests
 ```
@@ -49,15 +49,27 @@ curl -X POST http://127.0.0.1:54321/functions/v1/dispatch-reminders -H "Authoriz
 2. Link it and push the schema:
    ```bash
    supabase link --project-ref <ref>
-   supabase db push              # runs all 5 migrations (enables pg_cron + pg_net, schedules jobs)
+   supabase db push              # runs all 6 migrations (enables pg_cron + pg_net, schedules jobs)
    ```
 3. **Auth → URL configuration:** set the Site URL to `https://<your-app>.vercel.app` and add `https://<your-app>.vercel.app/auth/callback` to the redirect URLs.
 
-### 2.2 Edge Functions
+### 2.2 Secrets (Supabase Vault — recommended)
+The Edge Functions read each secret from an Edge Function secret (env var) if one is set; otherwise they read it from **Supabase Vault**. With Vault, the random secrets are generated inside the database and never leave it in plain text. Run this once in the SQL editor:
+```sql
+select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'cadence_cron_secret');
+select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'cadence_action_secret');
+select vault.create_secret('https://<ref>.supabase.co', 'cadence_project_url');
+select vault.create_secret('mailto:you@example.com', 'cadence_vapid_subject');
+select vault.create_secret('<VAPID public key>',  'cadence_vapid_public_key');
+select vault.create_secret('<VAPID private key>', 'cadence_vapid_private_key');   -- from: npx web-push generate-vapid-keys
+```
+(Alternatively use `supabase secrets set VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT=… CRON_SECRET=… NOTIFICATION_ACTION_SECRET=…`. If you do, `CRON_SECRET` must equal the Vault value `cadence_cron_secret`, which pg_cron sends.)
+
+### 2.3 Edge Functions
 ```bash
-supabase secrets set --env-file supabase/.env     # VAPID_*, CRON_SECRET, NOTIFICATION_ACTION_SECRET, ALLOWED_ORIGINS
 supabase functions deploy dispatch-reminders --no-verify-jwt
 supabase functions deploy notification-action --no-verify-jwt
+supabase secrets set ALLOWED_ORIGINS=https://<your-app>.vercel.app   # optional CORS restriction
 ```
 `--no-verify-jwt` is required: both functions authenticate requests themselves.
 - **dispatch-reminders** checks the cron bearer secret.
@@ -65,22 +77,20 @@ supabase functions deploy notification-action --no-verify-jwt
 
 `SUPABASE_URL` and `SUPABASE_DB_URL` are injected automatically.
 
-### 2.3 Vercel (frontend)
+### 2.4 Vercel (frontend)
 1. Push the repo to GitHub, then import it in Vercel (framework: Next.js).
 2. Set the environment variables `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_VAPID_PUBLIC_KEY`.
 3. Deploy. Vercel serves HTTPS, which Web Push requires.
 
-### 2.4 Turn on the scheduler (once, in the SQL editor)
+### 2.5 Turn on the scheduler
+The pg_cron jobs from migration 005 start working once `cadence_project_url` and `cadence_cron_secret` exist in Vault (§2.2). Verify:
 ```sql
-select vault.create_secret('https://<ref>.supabase.co', 'cadence_project_url');
-select vault.create_secret('<same value as CRON_SECRET>', 'cadence_cron_secret');
--- verify
 select jobname, schedule, active from cron.job;                       -- 3 cadence-* jobs
 select status, return_message, start_time from cron.job_run_details order by start_time desc limit 5;
 ```
 Until both secrets exist, the dispatch job does nothing. The SQL tick still enqueues reminders, and they still appear in the in-app Notification Center.
 
-### 2.5 Smoke test after deploying
+### 2.6 Smoke test after deploying
 Sign up, then go to **Settings → This device → Enable**, then **Send test**. A push should arrive within about a minute. Next, create a task with quick add, e.g. "Test in 2m", close the tab, and wait for the reminder.
 
 ## 3. Environment variables checklist
@@ -90,11 +100,11 @@ Sign up, then go to **Settings → This device → Enable**, then **Send test**.
 | `NEXT_PUBLIC_SUPABASE_URL` | Vercel | no | Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel | no | anon/publishable key; RLS protects data |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Vercel | no | Must equal `VAPID_PUBLIC_KEY` |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Supabase function secrets | **private key: yes** | `npx web-push generate-vapid-keys` |
-| `VAPID_SUBJECT` | Supabase function secrets | no | `mailto:you@example.com` |
-| `CRON_SECRET` | Supabase function secrets **and** Vault `cadence_cron_secret` | **yes** | `openssl rand -hex 32` |
-| `NOTIFICATION_ACTION_SECRET` | Supabase function secrets | **yes** | Signs notification action tokens; rotating it invalidates open reminders |
-| `ALLOWED_ORIGINS` | Supabase function secrets | no | Your app origin(s), comma-separated |
+| Vault `cadence_vapid_public_key` / `cadence_vapid_private_key` | Supabase Vault (or function secrets `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`) | **private key: yes** | `npx web-push generate-vapid-keys` |
+| Vault `cadence_vapid_subject` | Supabase Vault (or `VAPID_SUBJECT`) | no | `mailto:you@example.com` |
+| Vault `cadence_cron_secret` | Supabase Vault (or `CRON_SECRET`; must match) | **yes** | Generated in SQL; sent by pg_cron, checked by dispatch-reminders |
+| Vault `cadence_action_secret` | Supabase Vault (or `NOTIFICATION_ACTION_SECRET`) | **yes** | Signs notification action tokens; rotating it invalidates open reminders |
+| `ALLOWED_ORIGINS` | Supabase function secrets (optional) | no | Your app origin(s), comma-separated; defaults to `*` (tokens, not cookies, authorise requests) |
 | Vault `cadence_project_url` | Supabase Vault | no | `https://<ref>.supabase.co` |
 
 The service-role key is **not used anywhere**. The Edge Functions use the injected `SUPABASE_DB_URL`. Nothing secret is prefixed `NEXT_PUBLIC_`.

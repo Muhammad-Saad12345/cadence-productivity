@@ -2,14 +2,14 @@
 // Called by the service worker (tab may be closed, no user session) and by the
 // /n action screen. Authorisation = HMAC-signed, per-notification token.
 import { db } from "../_shared/db.ts";
-import { env } from "../_shared/env.ts";
+import { secret } from "../_shared/env.ts";
 import { corsHeaders, json, log } from "../_shared/http.ts";
 import { TOKEN_MAX_AGE_DAYS, verifyActionToken } from "../_shared/token.ts";
 
 const ACTIONS = new Set(["complete", "pending", "cancel", "snooze", "snooze_tomorrow"]);
 
 async function resolve(token: unknown) {
-  const id = await verifyActionToken(env("NOTIFICATION_ACTION_SECRET"), token);
+  const id = await verifyActionToken(await secret("NOTIFICATION_ACTION_SECRET"), token);
   if (!id) return null;
   const sql = db();
   const [n] = await sql`

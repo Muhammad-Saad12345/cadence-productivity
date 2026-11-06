@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import postgres from "npm:postgres@3.4.7";
 import { env } from "./env.ts";
 
 let client: ReturnType<typeof postgres> | null = null;

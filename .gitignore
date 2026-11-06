@@ -48,3 +48,4 @@ supabase/.temp
 
 # tests
 tests/e2e/node_modules
+deno.lock

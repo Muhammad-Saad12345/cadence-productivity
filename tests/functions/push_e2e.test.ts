@@ -12,11 +12,17 @@ import { asUser, connect, createUser, decryptPush, newSubscriber, startMockPushS
 const vapid = webpush.generateVAPIDKeys();
 Deno.env.set("SUPABASE_DB_URL", Deno.env.get("TEST_DB_URL") ?? "postgres://postgres@127.0.0.1:54322/cadence");
 Deno.env.set("SUPABASE_URL", "https://project-ref.supabase.co");
-Deno.env.set("VAPID_PUBLIC_KEY", vapid.publicKey);
-Deno.env.set("VAPID_PRIVATE_KEY", vapid.privateKey);
-Deno.env.set("VAPID_SUBJECT", "mailto:test@cadence.dev");
-Deno.env.set("CRON_SECRET", "cron-secret-for-tests");
-Deno.env.set("NOTIFICATION_ACTION_SECRET", "action-secret-for-tests");
+// Production configuration: secrets live in Supabase Vault, not in function env vars.
+for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT", "CRON_SECRET", "NOTIFICATION_ACTION_SECRET"]) Deno.env.delete(k);
+{
+  const admin = connect(1);
+  await admin`insert into vault.decrypted_secrets (name, decrypted_secret) values
+    ('cadence_vapid_public_key', ${vapid.publicKey}), ('cadence_vapid_private_key', ${vapid.privateKey}),
+    ('cadence_vapid_subject', 'mailto:test@cadence.dev'), ('cadence_cron_secret', 'cron-secret-for-tests'),
+    ('cadence_action_secret', 'action-secret-for-tests')
+    on conflict (name) do update set decrypted_secret = excluded.decrypted_secret`;
+  await admin.end();
+}
 
 const { handle: dispatchHandler } = await import("../../supabase/functions/dispatch-reminders/handler.ts");
 const { handle: actionHandler } = await import("../../supabase/functions/notification-action/handler.ts");

@@ -1,7 +1,7 @@
 // Delivery worker. Invoked every minute by pg_cron (pg_net) and safe to invoke
 // concurrently or repeatedly: every step is lease-based and idempotent.
 import { db } from "../_shared/db.ts";
-import { env, optionalEnv } from "../_shared/env.ts";
+import { env, optionalEnv, secret } from "../_shared/env.ts";
 import { json, log, timingSafeEqual } from "../_shared/http.ts";
 import { sendPush, topicFor, type PushResult } from "../_shared/push.ts";
 import { signActionToken } from "../_shared/token.ts";
@@ -95,7 +95,7 @@ async function deliver(n: LeasedNotification): Promise<Outcome> {
     return "no_channel";
   }
 
-  const token = await signActionToken(env("NOTIFICATION_ACTION_SECRET"), n.id);
+  const token = await signActionToken(await secret("NOTIFICATION_ACTION_SECRET"), n.id);
   const actionUrl = `${env("SUPABASE_URL").replace(/\/$/, "")}/functions/v1/notification-action`;
   const payload = buildPayload(n, prefs, token, actionUrl);
   const isTask = n.kind === "task_reminder";
@@ -153,7 +153,7 @@ async function deliver(n: LeasedNotification): Promise<Outcome> {
 export async function handle(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(req, { error: "method_not_allowed" }, 405);
 
-  const expected = env("CRON_SECRET");
+  const expected = await secret("CRON_SECRET");
   const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!got || !timingSafeEqual(got, expected)) return json(req, { error: "unauthorized" }, 401);
 

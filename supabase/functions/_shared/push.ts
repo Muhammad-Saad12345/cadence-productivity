@@ -1,5 +1,5 @@
-import webpush from "web-push";
-import { env } from "./env.ts";
+import webpush from "npm:web-push@3.6.7";
+import { secret } from "./env.ts";
 
 export interface PushTarget {
   id: string;
@@ -19,11 +19,9 @@ export interface PushResult {
   error?: string;
 }
 
-let configured = false;
-function configure() {
-  if (configured) return;
-  webpush.setVapidDetails(env("VAPID_SUBJECT"), env("VAPID_PUBLIC_KEY"), env("VAPID_PRIVATE_KEY"));
-  configured = true;
+async function configure() {
+  // Re-applied each call (values are cached in secret()), so rotated keys take effect within minutes.
+  webpush.setVapidDetails(await secret("VAPID_SUBJECT"), await secret("VAPID_PUBLIC_KEY"), await secret("VAPID_PRIVATE_KEY"));
 }
 
 export async function sendPush(
@@ -31,7 +29,7 @@ export async function sendPush(
   payload: unknown,
   opts: { ttlSeconds: number; urgency: "very-low" | "low" | "normal" | "high"; topic?: string; timeoutMs?: number },
 ): Promise<PushResult> {
-  configure();
+  await configure();
   try {
     const res = await webpush.sendNotification(
       { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
