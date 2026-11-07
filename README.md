@@ -51,7 +51,10 @@ curl -X POST http://127.0.0.1:54321/functions/v1/dispatch-reminders -H "Authoriz
    supabase link --project-ref <ref>
    supabase db push              # runs all 6 migrations (enables pg_cron + pg_net, schedules jobs)
    ```
-3. **Auth → URL configuration:** set the Site URL to `https://<your-app>.vercel.app` and add `https://<your-app>.vercel.app/auth/callback` to the redirect URLs.
+3. **Auth → URL configuration:** set the Site URL to `https://<your-app>.vercel.app` and add `https://<your-app>.vercel.app/auth/callback` to the redirect URLs. Use the production domain (Vercel → Project → Domains), not a per-deployment URL — those change on every deploy and sit behind Vercel deployment protection.
+4. **Auth → Email Templates → Confirm signup** (and **Magic Link**): replace the link with
+   `<a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email&next=/dashboard">Confirm your email</a>`
+   so the link works even when opened on a different device than the one used to sign up.
 
 ### 2.2 Secrets (Supabase Vault — recommended)
 The Edge Functions read each secret from an Edge Function secret (env var) if one is set; otherwise they read it from **Supabase Vault**. With Vault, the random secrets are generated inside the database and never leave it in plain text. Run this once in the SQL editor:

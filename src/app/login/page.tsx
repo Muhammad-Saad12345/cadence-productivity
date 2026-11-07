@@ -70,6 +70,11 @@ function LoginInner() {
               Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (see README).
             </p>
           )}
+          {params.get("error") === "auth" && !sent && (
+            <p className="mb-4 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+              That email link is invalid or was already used. If you already confirmed your email, just sign in below.
+            </p>
+          )}
           {sent ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center">
               <Mail className="size-8 text-primary" />
